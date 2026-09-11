@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic stop loss — atomic features</title>
+<style>
+  :root {
+    --ink: #17202b;
+    --soft: #51606f;
+    --faint: #8fa0b3;
+    --paper: #eef2f6;
+    --box: #ffffff;
+    --blue: #2456a6;
+    --blue-soft: #dbe7f8;
+    --teal: #0f766e;
+    --teal-soft: #e0f2ef;
+    --red: #c2374a;
+    --line: #c8d4e0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    margin: 0; padding: 24px 14px 64px;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    background:
+      linear-gradient(var(--paper), var(--paper)),
+      repeating-linear-gradient(0deg, transparent 0 23px, rgba(36,86,166,.06) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, rgba(36,86,166,.06) 23px 24px);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header.page { text-align: center; margin-bottom: 30px; }
+  header.page h1 {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 26px; font-weight: 800; letter-spacing: -.5px;
+  }
+  header.page .sub { color: var(--soft); margin-top: 6px; font-size: 14.5px; }
+  header.page .sub a { color: var(--blue); font-weight: 700; }
+  header.page .stamp {
+    display: inline-block; margin-top: 10px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 11.5px; color: var(--faint); border: 1px solid var(--line);
+    padding: 4px 12px; border-radius: 4px; background: var(--box);
+  }
+
+  /* ── stats bar ───────────────────────────────────── */
+  .stats { display: flex; justify-content: center; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .stat {
+    background: var(--box); border: 1.5px solid var(--blue); border-radius: 6px;
+    padding: 4px 12px; text-align: center; box-shadow: 0 4px 12px rgba(23, 32, 43, .06);
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .stat .snum {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 15px; font-weight: 800; color: var(--blue);
+  }
+  .stat .slbl {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--soft);
+  }
+
+  /* sub-feature chips */
+  .subs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .sub {
+    background: var(--blue-soft); border: 1.5px solid var(--blue); border-radius: 6px;
+    padding: 4px 10px; font-size: 12.5px;
+  }
+  .sub b { font-family: ui-monospace, Menlo, monospace; color: var(--blue); }
+
+  /* verification: reach / preconditions / drive steps / gotchas */
+  .vreach { font-size: 14px; line-height: 1.55; margin: 0 0 10px 22px; }
+  .vreach li { margin: 4px 0; }
+  .vreach li::marker { color: var(--teal); }
+  .pre {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--soft);
+    background: var(--paper); border-radius: 6px; padding: 8px 12px; margin-bottom: 8px;
+  }
+  .vbox ol.fsteps b, .vreach b { color: var(--blue); }
+  .vbox code, .vreach code {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+    background: var(--blue-soft); border-radius: 4px; padding: 1px 5px;
+  }
+  .gotcha {
+    background: #fdf6e8; border-left: 4px solid #9a6a00; border-radius: 0 6px 6px 0;
+    padding: 8px 12px; margin: 6px 0; font-size: 13.5px; line-height: 1.5;
+  }
+
+  /* ── feature box ─────────────────────────────────── */
+  .fbox {
+    background: var(--box); border: 2px solid var(--blue); border-radius: 8px;
+    overflow: hidden; box-shadow: 0 6px 18px rgba(23, 32, 43, .08);
+  }
+  .fhead {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    background: var(--blue); color: #fff; padding: 12px 16px;
+  }
+  .fhead .fnum {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 700;
+    background: rgba(255,255,255,.18); border-radius: 4px; padding: 2px 8px;
+  }
+  .fhead h3 { font-size: 18px; font-weight: 800; }
+  .fhead .fdept {
+    margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; opacity: .85;
+  }
+  .fsec { padding: 14px 16px 6px; }
+  .fsec + .fsec { border-top: 1px dashed var(--line); }
+  .flbl {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px; color: var(--blue); margin-bottom: 8px;
+  }
+  ol.fsteps, ul.fbeh { margin: 0 0 10px 22px; font-size: 14.5px; line-height: 1.55; }
+  ol.fsteps li, ul.fbeh li { margin: 5px 0; }
+  ol.fsteps li::marker { color: var(--blue); font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
+  ul.fbeh li::marker { color: var(--blue); }
+  .fsteps b, .fbeh b { color: var(--blue); }
+
+  /* stepped flow (legacy, unused by atom cards) */
+  .fvflow { margin: 2px 0 12px; }
+  .fvstep {
+    position: relative; margin: 0 0 4px 14px; padding: 8px 12px 8px 14px;
+    background: var(--blue-soft); border-left: 3px solid var(--blue);
+    border-radius: 0 6px 6px 0; font-size: 14px; line-height: 1.45;
+  }
+  .fvstep::before {
+    content: ""; position: absolute; left: -9px; top: 100%; height: 8px;
+    border-left: 2px solid var(--blue);
+  }
+  .fvstep:last-child::before { display: none; }
+  .fvstep.trig { background: #e8ecff; border-left-color: #4a3fb0; }
+  .fvstep.trig b { color: #4a3fb0; }
+  .fvstep.end { background: #fdeef0; border-left-color: var(--red); }
+  .fvstep.end b { color: var(--red); }
+  .fvstep .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px; color: var(--soft); margin-right: 6px;
+  }
+
+  /* ── connector ───────────────────────────────────── */
+  .vlink { position: relative; height: 44px; margin: 0 auto; width: 0; border-left: 2px solid var(--teal); }
+  .vlink::after {
+    content: "▼"; position: absolute; left: -7px; bottom: -4px;
+    color: var(--teal); font-size: 12px;
+  }
+  .vlink .vlab {
+    position: absolute; left: 10px; top: 12px; white-space: nowrap;
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px; color: var(--teal);
+    background: var(--paper); padding: 2px 8px; border: 1px solid var(--teal); border-radius: 4px;
+  }
+
+  /* ── verification box ────────────────────────────── */
+  .vbox {
+    background: var(--teal-soft); border: 2px solid var(--teal); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 34px; box-shadow: 0 6px 18px rgba(23, 32, 43, .06);
+  }
+  .vbox .flbl { color: var(--teal); }
+  .vbox .vactor {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .5px; color: var(--teal); opacity: .8; margin: -2px 0 8px;
+  }
+  .vbox ol.fsteps li::marker { color: var(--teal); }
+  .verdict {
+    border-radius: 6px; padding: 10px 14px; margin: 8px 0 2px; font-size: 14px; line-height: 1.5;
+    background: var(--box);
+  }
+  .verdict span {
+    display: block; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px;
+  }
+  .verdict.ok { border-left: 4px solid var(--teal); }
+  .verdict.ok span { color: var(--teal); }
+  .verdict.bad { border-left: 4px solid var(--red); }
+  .verdict.bad span { color: var(--red); }
+
+  /* ── test stream ─────────────────────────────────── */
+  .tunit { border-top: 1.5px dashed rgba(23, 32, 43, .14); padding: 10px 0 6px; }
+  .thead { display: flex; align-items: baseline; gap: 7px; font-weight: 800; font-size: 14px; }
+  .tnum {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 800;
+    color: #fff; background: var(--teal); border-radius: 4px; padding: 1px 6px;
+  }
+  .tbody { font-size: 13.5px; line-height: 1.55; margin: 4px 0 6px; }
+  .tunit .verdict { padding: 7px 12px; margin: 5px 0 2px; font-size: 13.5px; }
+
+  /* ── research disagreements strip ────────────────── */
+  .rnotes {
+    background: #fdf6e8; border: 2px solid #c9930a; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 26px; box-shadow: 0 6px 18px rgba(23, 32, 43, .06);
+  }
+  .rnhead { font-weight: 800; font-size: 14.5px; color: #7a5800; margin-bottom: 8px; }
+  .rnsub { font-size: 12.5px; color: #7a5800; opacity: .85; margin-bottom: 10px; }
+  .rnote {
+    background: #fff; border-left: 4px solid #c9930a; border-radius: 0 6px 6px 0;
+    padding: 8px 12px; margin: 6px 0; font-size: 13.5px; line-height: 1.5;
+  }
+  .rnote b { color: #7a5800; }
+  .tact {
+    display: block; background: #eaf6f1; border-left: 4px solid var(--teal);
+    border-radius: 0 6px 6px 0; padding: 7px 12px; margin-top: 6px; font-size: 13px;
+  }
+  .tact b {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 1px; color: var(--teal); margin-right: 6px;
+  }
+
+  footer { text-align: center; color: var(--soft); font-size: 13px; margin-top: 44px; }
+  footer a { color: var(--blue); font-weight: 700; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <h1>Dynamic stop loss</h1>
+    <div class="sub">atomic features · broken from feature &quot;dynamic stop loss&quot; (pasted feature, no idea-slicer link)</div>
+    <div class="stamp">7 atoms · updated 2026-09-11</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span class="snum">7</span><span class="slbl">atoms</span></div>
+  </div>
+
+  
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A1</span><h3>Price feed intake</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li><code>subscribe(symbol) -&gt; stream of {symbol, price, ts}</code> that connects the injected market-data client to one symbol.</li>
+        <li>Hold the latest tick as <code>lastPrice(symbol)</code> and push every new tick to subscribers.</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: symbol + injected market-data client. Out: a push stream of <code>{symbol, price, ts}</code> and a synchronous <code>lastPrice(symbol)</code>. Touches only the feed — never reads stop state or the venue.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>Inject a fake client, push ticks 100 then 101, read <code>lastPrice(&quot;X&quot;)</code> and assert it returns 101 and that a subscriber received both ticks.</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> With a stubbed data client, every pushed tick is observable on the stream and <code>lastPrice</code> returns the most recent price.</div>
+    <div class="verdict bad"><span>Failure</span> <code>lastPrice</code> returns a stale value, or a pushed tick never reaches a subscriber.</div>
+  </section>
+
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A2</span><h3>Trigger-price calculator</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li>Pure function <code>nextTrigger({price, currentTrigger, side, config}) -&gt; newTrigger</code>; <code>config</code> picks the rule — trail-by-distance (<code>price - distance</code> for a long) or volatility-band (<code>price - k*atr</code>).</li>
+        <li>Never loosen the stop: clamp so a long's <code>newTrigger &gt;= currentTrigger</code> (mirror for a short).</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: flat primitives <code>{price, currentTrigger, side, config}</code>. Out: one <code>newTrigger</code> number. Pure — no I/O, no clock, no venue, no state writes.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>Call with long, currentTrigger 90, price 100, distance 5 → assert 95; then call price 96 → assert it stays 95 (never loosens).</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> For known inputs the function returns the documented trigger and never moves a stop against the position.</div>
+    <div class="verdict bad"><span>Failure</span> The returned trigger loosens the stop, or differs from the rule for known inputs.</div>
+  </section>
+
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A3</span><h3>Trailing update loop</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li>On each tick from Price feed intake, call <code>nextTrigger</code> with the current persisted trigger.</li>
+        <li>If the returned trigger differs, emit <code>stopMoved({symbol, from, to})</code>; otherwise emit nothing.</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: injected feed stream + injected <code>nextTrigger</code> + a current-trigger reader. Out: <code>stopMoved</code> events, at most one in-flight move per symbol. Never calls the venue directly.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>Feed rising prices 100,101,102 through a stub calculator that trails by 5 → assert exactly the moves 95→96→97 are emitted, and that a repeated flat price emits nothing.</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> Rising prices produce monotonically rising <code>stopMoved</code> events; an unchanged trigger emits no event.</div>
+    <div class="verdict bad"><span>Failure</span> A move fires when the trigger did not change, or a real change fires no move.</div>
+  </section>
+
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A4</span><h3>Resting order sync</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li><code>syncOrder({symbol, side, trigger})</code> that guarantees exactly one resting stop order sits at <code>trigger</code> on the injected venue client.</li>
+        <li>Place if none exists; cancel-replace if one exists at a different price; no-op if it already matches.</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: <code>{symbol, side, trigger}</code> + injected venue client. Out: the live venue order id. Idempotent for the same trigger; touches only this symbol's stop order.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>With a fake venue client, call <code>syncOrder</code> at 95 then 96 → assert the client saw one place at 95 then one cancel-replace to 96, and a repeat call at 96 issues no new venue call.</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> After any sequence of triggers the venue holds exactly one stop order, at the latest trigger.</div>
+    <div class="verdict bad"><span>Failure</span> Duplicate resting orders, a stale price left on the venue, or a redundant cancel-replace on an unchanged trigger.</div>
+  </section>
+
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A5</span><h3>Cancel / teardown</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li><code>cancelStop(symbol)</code> that cancels the resting stop order on the venue and marks the stop inactive.</li>
+        <li>Make it safe when no order exists — no-op, still marks inactive.</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: symbol + injected venue client + state writer. Out: no resting order for that symbol and an inactive stop record. Touches only this symbol.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>Place a stop, call <code>cancelStop</code>, assert the fake venue shows no resting order for the symbol and state reads <code>active=false</code>; call it again and assert no error.</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> After cancel the venue holds no stop for the symbol and the persisted stop is inactive, even if called twice.</div>
+    <div class="verdict bad"><span>Failure</span> A resting order survives the cancel, or a second cancel throws.</div>
+  </section>
+
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A6</span><h3>Persisted stop state</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li>Record <code>{symbol, side, trigger, config, venueOrderId, active}</code> with <code>saveStop</code> / <code>loadStop(symbol)</code> against the injected store.</li>
+        <li>Write on every trigger move and on activate/cancel so the loop can resume after a restart.</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: the stop record + injected key-value store. Out: durable read-back of the same record by symbol. Touches only the store — no venue, no feed.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>Save a record with trigger 96, build a fresh instance against the same store (simulating a restart), <code>loadStop</code> and assert trigger 96 and <code>active=true</code> come back.</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> A saved stop survives a process restart and reloads with the identical trigger, config and active flag.</div>
+    <div class="verdict bad"><span>Failure</span> A reloaded stop is missing, or its trigger/active flag differs from what was saved.</div>
+  </section>
+
+  <section class="fbox">
+    <div class="fhead"><span class="fnum">A7</span><h3>Stop status display</h3><span class="fdept">Dynamic stop loss</span></div>
+    <div class="fsec"><div class="flbl">Build</div>
+      <ol class="fsteps">
+        <li><code>renderStop(state, lastPrice) -&gt; {trigger, distance, active}</code> with <code>distance = lastPrice - trigger</code> (mirror for a short).</li>
+        <li>Expose it read-only at the status endpoint the user watches.</li>
+      </ol>
+    </div>
+    <div class="fsec"><div class="flbl">Contract</div>
+      <div class="pre">In: a stop record + a last price (both flat primitives). Out: a display object <code>{trigger, distance, active}</code>. Pure and read-only — never writes state or touches the venue.</div>
+    </div>
+    <div class="fsec"><div class="flbl">Verify</div>
+      <ol class="fsteps">
+        <li>Call <code>renderStop({trigger:95, active:true}, 100)</code> → assert it returns <code>{trigger:95, distance:5, active:true}</code>.</li>
+      </ol>
+    </div>
+    <div class="verdict ok"><span>Success</span> The displayed trigger and distance-to-price match the persisted stop and the latest price for any input.</div>
+    <div class="verdict bad"><span>Failure</span> The shown trigger or distance disagrees with the stored stop and the last price.</div>
+  </section>
+
+  
+
+  <footer>Atomic Features — one feature, broken into atoms a team can build in parallel · <a href="index.html">all atomic features</a></footer>
+
+</div>
+<script src="nav.js" defer></script>
+</body>
+</html>

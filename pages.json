@@ -1,0 +1,10 @@
+[
+  {
+    "file": "dynamic-stop-loss.html",
+    "title": "Dynamic stop loss — atomic features",
+    "desc": "7 atoms, each independently buildable and independently verifiable — ready for parallel workers.",
+    "date": "2026-09-11",
+    "emoji": "⚛️",
+    "status": "open"
+  }
+]
